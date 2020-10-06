@@ -1,0 +1,152 @@
+<jqassistant-rules xmlns="http://schema.jqassistant.org/rule/v1.8"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://schema.jqassistant.org/rule/v1.8 https://schema.jqassistant.org/rule/jqassistant-rule-v1.8.xsd">
+    <group id="default">
+        <includeConcept refId="package-concept:SetRootPackage"/>
+        <includeConcept refId="package-concept:SetCorePackage"/>
+        <includeConcept refId="package-concept:SetServicePackage"/>
+        <includeConcept refId="package-concept:SetPersistencePackage"/>
+        <includeConcept refId="package-concept:SetCommonPackage"/>
+        <includeConstraint refId="package-constraint:EntityClassesInRightPackage"/>
+        <includeConstraint refId="package-constraint:RestControllerClassesInRightPackage"/>
+        <includeConstraint refId="dependency-constraint:ServiceCantDependOnPersistence"/>
+        <includeConstraint refId="dependency-constraint:CoreCantDependOnService"/>
+        <includeConstraint refId="dependency-constraint:CommonCantDependOnPersistence"/>
+        <includeConstraint refId="dependency-constraint:CommonCantDependOnCore"/>
+        <includeConstraint refId="dependency-constraint:CommonCantDependOnService"/>
+    </group>
+
+
+    <concept id="package-concept:SetRootPackage" severity="blocker">
+        <requiresParameter name="rootPackage" type="String"/>
+        <description>Versuche das Rootpackage zu setzen.</description>
+        <cypher><![CDATA[
+            MATCH
+                (p:Package)
+            WHERE
+                p.fqn = {rootPackage}
+            SET
+                p:RootPackage
+            RETURN
+                p
+        ]]></cypher>
+    </concept>
+
+    <concept id="package-concept:SetCorePackage" severity="blocker">
+        <requiresConcept refId="package-concept:SetRootPackage" />
+        <description>Versuche Anwendungskern-Package zu setzen..</description>
+        <cypher><![CDATA[
+            MATCH
+                (p:Package { name: "core" })<-[:CONTAINS]-(root:RootPackage)
+            SET
+                p:CorePackage
+            RETURN
+                p
+        ]]></cypher>
+    </concept>
+
+    <concept id="package-concept:SetServicePackage" severity="blocker">
+        <requiresConcept refId="package-concept:SetRootPackage" />
+        <description>Versuche Service-Package zu setzen..</description>
+        <cypher><![CDATA[
+            MATCH
+                (p:Package { name: "service" })<-[:CONTAINS]-(root:RootPackage)
+            SET
+                p:ServicePackage
+            RETURN
+                p
+        ]]></cypher>
+    </concept>
+
+    <concept id="package-concept:SetPersistencePackage" severity="blocker">
+        <requiresConcept refId="package-concept:SetRootPackage" />
+        <description>Versuche Persistence-Package zu setzen..</description>
+        <cypher><![CDATA[
+            MATCH
+                (p:Package { name: "persistence" })<-[:CONTAINS]-(root:RootPackage)
+            SET
+                p:PersistencePackage
+            RETURN
+                p
+        ]]></cypher>
+    </concept>
+
+    <concept id="package-concept:SetCommonPackage" severity="blocker">
+        <requiresConcept refId="package-concept:SetRootPackage" />
+        <description>Versuche Anwendungskern-Package zu setzen..</description>
+        <cypher><![CDATA[
+            MATCH
+                (p:Package { name: "common" })<-[:CONTAINS]-(root:RootPackage)
+            SET
+                p:CommonPackage
+            RETURN
+                p
+        ]]></cypher>
+    </concept>
+
+    <constraint id="dependency-constraint:ServiceCantDependOnPersistence" severity="major">
+        <description>Elemente der Service-Schicht dürfen nicht  auf Elemente der Persistence-Schicht zugreifen.</description>
+        <cypher><![CDATA[
+            MATCH (persistenceP:PersistencePackage)-[:CONTAINS*]->(persistenceElement)<-[:DEPENDS_ON]-(serviceElement)<-[:CONTAINS*]-(serviceP:ServicePackage) 
+            RETURN serviceElement, persistenceElement 
+        ]]></cypher>
+    </constraint>
+
+    <constraint id="dependency-constraint:CoreCantDependOnService" severity="major">
+        <description>Elemente der Core-Schicht dürfen nicht  auf Elemente der Service-Schicht zugreifen.</description>
+        <cypher><![CDATA[
+            MATCH (serviceP:ServicePackage)-[:CONTAINS*]->(serviceElement)<-[:DEPENDS_ON]-(coreElement)<-[:CONTAINS*]-(coreP:CorePackage) 
+            RETURN coreElement, serviceElement 
+        ]]></cypher>
+    </constraint>
+
+    <constraint id="dependency-constraint:CommonCantDependOnPersistence" severity="major">
+        <description>Elemente der Common-Schicht dürfen nicht  auf Elemente der Persistence-Schicht zugreifen.</description>
+        <cypher><![CDATA[
+            MATCH (persistenceP:PersistencePackage)-[:CONTAINS*]->(persistenceElement)<-[:DEPENDS_ON]-(commonElement)<-[:CONTAINS*]-(commonP:CommonPackage) 
+            RETURN commonElement, persistenceElement 
+        ]]></cypher>
+    </constraint>
+
+    <constraint id="dependency-constraint:CommonCantDependOnCore" severity="major">
+        <description>Elemente der Common-Schicht dürfen nicht  auf Elemente der Core-Schicht zugreifen.</description>
+        <cypher><![CDATA[
+            MATCH (coreP:CorePackage)-[:CONTAINS*]->(coreElement)<-[:DEPENDS_ON]-(commonElement)<-[:CONTAINS*]-(commonP:CommonPackage) 
+            RETURN commonElement, coreElement 
+        ]]></cypher>
+    </constraint>
+
+    <constraint id="dependency-constraint:CommonCantDependOnService" severity="major">
+        <description>Elemente der Common-Schicht dürfen nicht  auf Elemente der Service-Schicht zugreifen.</description>
+        <cypher><![CDATA[
+            MATCH (serviceP:ServicePackage)-[:CONTAINS*]->(serviceElement)<-[:DEPENDS_ON]-(commonElement)<-[:CONTAINS*]-(commonP:CommonPackage) 
+            RETURN commonElement, serviceElement 
+        ]]></cypher>
+    </constraint>
+
+    <constraint id="package-constraint:EntityClassesInRightPackage" severity="major">
+        <requiresConcept refId="jpa2:Entity" />
+        <description>Alle Entity-Klassen müssen sich in der Persistence-Schicht befinden.</description>
+        <cypher><![CDATA[
+            MATCH
+                (entityClass:Entity)
+            WHERE NOT
+                (:PersistencePackage)-[:CONTAINS*]->(entityClass)
+            RETURN
+                entityClass AS EntityClassInWrongPackage
+        ]]></cypher>
+    </constraint>
+
+    <constraint id="package-constraint:RestControllerClassesInRightPackage" severity="major">
+        <requiresConcept refId="spring-mvc:RestController" />
+        <description>Alle RestController-Klassen müssen sich in der Service-Schicht befinden."</description>
+        <cypher><![CDATA[
+            MATCH
+                (restControllerClass:RestController)
+            WHERE NOT
+                (:ServicePackage)-[:CONTAINS*]->(restControllerClass)
+            RETURN
+                restControllerClass AS RestControllerInWrongPackage
+        ]]></cypher>
+    </constraint>
+</jqassistant-rules>
